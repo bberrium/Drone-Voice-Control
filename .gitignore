@@ -1,0 +1,6 @@
+venv/
+drone_env/
+__pycache__/
+*.pyc
+*.log
+.git/
