@@ -1,0 +1,14 @@
+audioop-lts==0.2.2
+dronekit==2.9.2
+dronekit-sitl==3.3.0
+fastcrc==0.3.6
+lxml==6.1.0
+monotonic==1.6
+psutil==7.2.2
+PyAudio==0.2.14
+pymavlink==2.4.49
+six==1.17.0
+SpeechRecognition==3.16.1
+standard-aifc==3.13.0
+standard-chunk==3.13.0
+typing_extensions==4.15.0

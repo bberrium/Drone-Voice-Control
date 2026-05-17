@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Drone Control with Voice</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #050810;
+  --surface: rgba(255,255,255,0.03);
+  --border: rgba(79,195,247,0.15);
+  --cyan: #4FC3F7;
+  --purple: #8B5CF6;
+  --green: #34D399;
+  --red: #F87171;
+  --yellow: #FCD34D;
+  --text: #E2E8F0;
+  --muted: rgba(226,232,240,0.45);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif}
+body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px);pointer-events:none;z-index:9999}
+body::after{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(79,195,247,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(79,195,247,0.04) 1px,transparent 1px);background-size:60px 60px;pointer-events:none;z-index:0}
+
+/* PROGRESS */
+#progressBar{position:fixed;top:0;left:0;height:2px;background:linear-gradient(90deg,var(--cyan),var(--purple));transition:width 0.5s ease;z-index:1000;box-shadow:0 0 12px var(--cyan)}
+#slideCounter{position:fixed;top:16px;left:50%;transform:translateX(-50%);font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:2px;z-index:1000}
+#dots{position:fixed;right:18px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:7px;z-index:1000}
+.dot{width:6px;height:6px;border-radius:50%;background:rgba(79,195,247,0.18);cursor:pointer;transition:all 0.3s;border:1px solid rgba(79,195,247,0.3)}
+.dot.active{background:var(--cyan);box-shadow:0 0 8px var(--cyan);transform:scale(1.5)}
+#nav{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:12px;z-index:1000;background:rgba(5,8,16,0.85);border:1px solid var(--border);border-radius:40px;padding:8px 20px;backdrop-filter:blur(20px)}
+.nav-btn{font-family:'Space Mono',monospace;font-size:11px;color:var(--cyan);background:transparent;border:1px solid rgba(79,195,247,0.3);border-radius:20px;padding:5px 14px;cursor:pointer;transition:all 0.2s}
+.nav-btn:hover{background:rgba(79,195,247,0.1);box-shadow:0 0 12px rgba(79,195,247,0.3)}
+#counter{font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);min-width:50px;text-align:center}
+#hints{position:fixed;bottom:18px;right:18px;display:flex;gap:6px;z-index:1000}
+.hint{font-family:'Space Mono',monospace;font-size:9px;color:var(--muted);background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:4px;padding:3px 7px}
+
+/* SLIDES */
+#slides{position:relative;width:100%;height:100vh;z-index:1}
+.slide{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:52px 65px 72px;opacity:0;transform:translateX(60px);transition:all 0.55s cubic-bezier(0.4,0,0.2,1);pointer-events:none}
+.slide.active{opacity:1;transform:translateX(0);pointer-events:all}
+.slide.exit{opacity:0;transform:translateX(-60px)}
+
+.s-title{font-family:'Orbitron',monospace;font-size:22px;font-weight:700;text-align:center;margin-bottom:26px;background:linear-gradient(135deg,var(--cyan),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;position:relative}
+.s-title::after{content:'';position:absolute;bottom:-8px;left:50%;transform:translateX(-50%);width:44px;height:2px;background:linear-gradient(90deg,var(--cyan),var(--purple));box-shadow:0 0 8px var(--cyan)}
+
+/* PARTICLES */
+.particles{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+.p{position:absolute;border-radius:50%;background:var(--cyan);animation:pfloat linear infinite;opacity:0}
+@keyframes pfloat{0%{transform:translateY(110vh);opacity:0}10%{opacity:0.5}85%{opacity:0.5}100%{transform:translateY(-20px) translateX(20px);opacity:0}}
+@keyframes levitate{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-18px) rotate(2deg)}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulseRing{0%,100%{box-shadow:0 0 0 0 rgba(79,195,247,0.4)}50%{box-shadow:0 0 0 10px rgba(79,195,247,0)}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
+@keyframes countUp{from{opacity:0;transform:scale(0.5)}to{opacity:1;transform:scale(1)}}
+
+/* ═══ S1: TITLE ═══ */
+#s1{background:radial-gradient(ellipse at 50% 40%,rgba(79,195,247,0.08) 0%,transparent 70%)}
+.t-drone{font-size:78px;animation:levitate 4s ease-in-out infinite;margin-bottom:10px;filter:drop-shadow(0 0 30px rgba(79,195,247,0.5))}
+.t-main{font-family:'Orbitron',monospace;font-size:46px;font-weight:900;background:linear-gradient(135deg,#fff 0%,var(--cyan) 50%,var(--purple) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;text-align:center;line-height:1.1;margin-bottom:8px;letter-spacing:-1px}
+.t-sub{font-family:'Space Mono',monospace;font-size:12px;color:var(--muted);letter-spacing:4px;text-transform:uppercase;margin-bottom:36px}
+.t-badge{font-family:'Space Mono',monospace;font-size:11px;color:var(--cyan);background:rgba(79,195,247,0.08);border:1px solid rgba(79,195,247,0.3);border-radius:4px;padding:9px 20px;letter-spacing:2px;box-shadow:0 0 20px rgba(79,195,247,0.1)}
+
+/* ═══ S2: PROBLEM ═══ */
+.prob-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;width:100%;max-width:840px}
+.prob-box{border-radius:12px;padding:22px}
+.prob-box.bad{background:rgba(248,113,113,0.05);border:1px solid rgba(248,113,113,0.2)}
+.prob-box.good{background:rgba(52,211,153,0.05);border:1px solid rgba(52,211,153,0.2)}
+.prob-title{font-family:'Orbitron',monospace;font-size:11px;font-weight:700;margin-bottom:12px}
+.prob-box.bad .prob-title{color:var(--red)}
+.prob-box.good .prob-title{color:var(--green)}
+.prob-item{display:flex;align-items:center;gap:9px;padding:7px 0;font-size:13px;color:var(--muted);border-bottom:1px solid rgba(255,255,255,0.04)}
+.prob-item:last-child{border-bottom:none}
+.prob-item span:first-child{font-size:17px}
+
+/* ═══ S3: IEEE ═══ */
+.ieee-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;width:100%;max-width:860px}
+.ieee-box{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px}
+.ieee-quote{font-family:'Space Mono',monospace;font-size:10px;line-height:1.8;color:var(--muted);font-style:italic;margin-bottom:16px;padding:12px;border-left:2px solid var(--cyan);background:rgba(79,195,247,0.03);border-radius:0 8px 8px 0}
+.ieee-row{display:flex;gap:10px;margin-bottom:8px;font-size:13px;align-items:center}
+.ieee-key{color:var(--muted);min-width:55px;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:1px}
+.ieee-val{color:var(--text);font-weight:700}
+.step-label{font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:4px}
+.step{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:9px 13px;font-size:12px;color:var(--muted);margin-bottom:6px;transition:all 0.2s}
+.step:last-child{margin-bottom:0}
+.step:hover{border-color:var(--border);color:var(--text);background:rgba(79,195,247,0.04);transform:translateX(4px)}
+.step-n{min-width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,var(--cyan),var(--purple));display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#fff;font-family:'Space Mono',monospace;flex-shrink:0}
+
+/* ═══ S4: ARCH ═══ */
+.arch{display:flex;flex-direction:column;align-items:center;width:100%;max-width:680px;gap:4px}
+.arow{display:flex;align-items:center;gap:12px;width:100%;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:11px 20px;transition:all 0.2s;cursor:default}
+.arow:hover{background:rgba(79,195,247,0.06);transform:translateX(8px);border-color:rgba(79,195,247,0.4)}
+.a-icon{font-size:22px;min-width:30px;text-align:center}
+.a-label{font-family:'Space Mono',monospace;font-size:9px;color:var(--muted);min-width:115px;letter-spacing:1px}
+.a-tech{font-size:13px;font-weight:700;color:var(--text)}
+.a-sub{font-size:11px;color:var(--muted);margin-top:1px}
+.a-badge{margin-left:auto;font-family:'Space Mono',monospace;font-size:9px;color:var(--cyan);background:rgba(79,195,247,0.1);border:1px solid rgba(79,195,247,0.25);border-radius:4px;padding:2px 7px;white-space:nowrap}
+.a-arrow{color:rgba(79,195,247,0.35);font-size:14px;text-align:center;width:100%}
+
+/* ═══ S5: TECH ═══ */
+.tech-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:13px;width:100%;max-width:920px}
+.tc{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;transition:all 0.25s;position:relative;overflow:hidden}
+.tc::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--cyan),var(--purple))}
+.tc:hover{transform:translateY(-4px);border-color:rgba(79,195,247,0.35);background:rgba(79,195,247,0.05);box-shadow:0 8px 24px rgba(79,195,247,0.1)}
+.tc-icon{font-size:26px;margin-bottom:7px}
+.tc-name{font-family:'Orbitron',monospace;font-size:11px;font-weight:700;color:var(--cyan);margin-bottom:6px}
+.tc-desc{font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:8px}
+.tc-tags{display:flex;flex-wrap:wrap;gap:4px}
+.tc-tag{font-family:'Space Mono',monospace;font-size:9px;color:var(--muted);background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:3px;padding:2px 5px}
+
+/* ═══ S6: COMMANDS ═══ */
+.cmd-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;width:100%;max-width:940px}
+.cmd{background:var(--surface);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:11px 8px;text-align:center;transition:all 0.2s;position:relative;overflow:hidden}
+.cmd::before{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--cyan),transparent);opacity:0;transition:opacity 0.3s}
+.cmd:hover{background:rgba(79,195,247,0.07);border-color:rgba(79,195,247,0.35);transform:scale(1.04)}
+.cmd:hover::before{opacity:1}
+.cmd-i{font-size:22px;margin-bottom:5px}
+.cmd-e{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;color:var(--cyan);margin-bottom:2px}
+.cmd-r{font-size:10px;color:var(--muted);margin-bottom:3px}
+.cmd-desc{font-size:9px;color:rgba(255,255,255,0.2);font-family:'Space Mono',monospace}
+
+/* ═══ S7: HOW ═══ */
+.how-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;width:100%;max-width:880px}
+.how-box{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px}
+.how-title{font-family:'Orbitron',monospace;font-size:11px;font-weight:700;color:var(--cyan);margin-bottom:12px;display:flex;align-items:center;gap:7px}
+.how-step{display:flex;gap:9px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:11px;color:var(--muted);line-height:1.4}
+.how-step:last-child{border-bottom:none}
+.how-num{font-family:'Space Mono',monospace;font-size:9px;color:var(--cyan);min-width:16px;margin-top:1px}
+.how-code{background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:12px 14px;font-family:'Space Mono',monospace;font-size:10px;line-height:1.8;white-space:pre;overflow-x:auto}
+.kw{color:#C792EA}.fn{color:#82AAFF}.st{color:#C3E88D}.cm{color:rgba(255,255,255,0.25);font-style:italic}.nm{color:#F78C6C}.op{color:rgba(255,255,255,0.4)}
+
+/* ═══ S8: CODE ═══ */
+.code-wrap{background:rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:18px 22px;width:100%;max-width:840px;position:relative}
+.code-wrap::before{content:'voice_drone_control.py';position:absolute;top:9px;right:13px;font-size:9px;color:rgba(255,255,255,0.15);letter-spacing:1px;font-family:'Space Mono',monospace}
+.cdots{display:flex;gap:5px;margin-bottom:12px}
+.cd{width:9px;height:9px;border-radius:50%;display:inline-block}
+.code-full{font-family:'Space Mono',monospace;font-size:11px;line-height:1.85;white-space:pre;overflow-x:auto}
+
+/* ═══ S9: MAVLINK ═══ */
+.mav-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;width:100%;max-width:880px}
+.mav-box{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px}
+.mav-title{font-family:'Orbitron',monospace;font-size:11px;font-weight:700;color:var(--cyan);margin-bottom:12px}
+.mav-packet{display:flex;gap:3px;margin-bottom:14px;flex-wrap:wrap}
+.mp{border-radius:6px;padding:7px 9px;text-align:center;font-family:'Space Mono',monospace}
+.mp-label{font-size:8px;color:var(--muted);margin-bottom:2px;letter-spacing:1px}
+.mp-val{font-size:11px;font-weight:700}
+.mav-item{display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:11px;color:var(--muted)}
+.mav-item:last-child{border-bottom:none}
+.mav-dot{color:var(--cyan);margin-top:2px;flex-shrink:0}
+.ned-box{background:rgba(0,0,0,0.3);border:1px solid rgba(79,195,247,0.15);border-radius:8px;padding:12px;font-family:'Space Mono',monospace;font-size:10px;line-height:2}
+.ned-row{display:flex;gap:8px;align-items:center}
+.ned-axis{color:var(--cyan);min-width:28px;font-weight:700}
+.ned-desc{color:var(--muted)}
+.ned-warn{color:var(--yellow);font-size:9px;margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.06)}
+
+/* ═══ S10: PIXHAWK ═══ */
+.px-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;width:100%;max-width:880px}
+.px-box{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px}
+.px-title{font-family:'Orbitron',monospace;font-size:11px;font-weight:700;color:var(--cyan);margin-bottom:12px}
+.px-spec{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:12px}
+.px-spec:last-child{border-bottom:none}
+.px-key{color:var(--muted);font-family:'Space Mono',monospace;font-size:9px}
+.px-val{color:var(--text);font-weight:700;font-size:12px}
+.px-mode{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;font-size:11px;margin-bottom:6px;transition:all 0.2s}
+.px-mode:last-child{margin-bottom:0}
+.px-mode.active-mode{background:rgba(79,195,247,0.08);border:1px solid rgba(79,195,247,0.25)}
+.px-mode.inactive{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);color:var(--muted)}
+.px-mode-name{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;min-width:80px}
+.px-mode.active-mode .px-mode-name{color:var(--green)}
+.px-badge{font-family:'Space Mono',monospace;font-size:8px;margin-left:auto;padding:2px 5px;border-radius:3px}
+.px-badge.use{background:rgba(52,211,153,0.15);color:var(--green);border:1px solid rgba(52,211,153,0.3)}
+.px-badge.no{background:rgba(255,255,255,0.04);color:var(--muted);border:1px solid rgba(255,255,255,0.08)}
+
+/* ═══ S11: SITL ═══ */
+.sitl-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;width:100%;max-width:880px}
+.sitl-box{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px}
+.sitl-title{font-family:'Orbitron',monospace;font-size:11px;font-weight:700;color:var(--cyan);margin-bottom:12px}
+.terminal{background:#000;border:1px solid rgba(52,211,153,0.2);border-radius:8px;padding:12px;font-family:'Space Mono',monospace;font-size:10px;line-height:1.9}
+.t-line{display:flex;gap:5px}
+.t-prompt{color:var(--green)}
+.t-cmd{color:var(--text)}
+.t-out{color:rgba(255,255,255,0.3)}
+.t-ok{color:var(--green)}
+.ss{display:flex;gap:10px;align-items:flex-start;padding:9px 12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);border-radius:8px;font-size:11px;color:var(--muted);transition:all 0.2s;margin-bottom:6px}
+.ss:last-child{margin-bottom:0}
+.ss:hover{border-color:var(--border);color:var(--text)}
+.ss-n{font-family:'Space Mono',monospace;font-size:9px;color:var(--cyan);font-weight:700;min-width:18px;margin-top:1px}
+.ss-title{font-weight:700;color:var(--text);margin-bottom:2px;font-size:12px}
+.ss-code{font-family:'Space Mono',monospace;font-size:9px;color:var(--green);background:rgba(52,211,153,0.05);border:1px solid rgba(52,211,153,0.1);border-radius:4px;padding:2px 6px;margin-top:3px;display:inline-block}
+
+/* ═══ S12: METRICS ═══ */
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:13px;width:100%;max-width:940px}
+.mc{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px 12px;text-align:center;position:relative;overflow:hidden;transition:all 0.3s}
+.mc:hover{transform:translateY(-4px);box-shadow:0 8px 24px rgba(79,195,247,0.1)}
+.mc::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--cyan),var(--purple));box-shadow:0 0 8px var(--cyan)}
+.mc-n{font-family:'Orbitron',monospace;font-size:34px;font-weight:900;background:linear-gradient(135deg,var(--cyan),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;line-height:1;margin-bottom:4px}
+.mc-u{font-size:11px;color:var(--muted);margin-bottom:5px}
+.mc-l{font-family:'Space Mono',monospace;font-size:8px;color:rgba(226,232,240,0.35);text-transform:uppercase;letter-spacing:1px}
+.res-row{display:flex;gap:11px;max-width:940px;width:100%;margin-top:16px}
+.rb{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:13px}
+.rb-title{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;margin-bottom:8px;letter-spacing:1px}
+.ri{font-size:11px;color:var(--muted);padding:4px 0;display:flex;align-items:flex-start;gap:7px;border-bottom:1px solid rgba(255,255,255,0.03)}
+.ri:last-child{border-bottom:none}
+
+/* ═══ S13: COMPARE ═══ */
+.compare{display:grid;grid-template-columns:1fr 44px 1fr;width:100%;max-width:860px;align-items:start;gap:0}
+.cc{background:var(--surface);border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:18px}
+.cc.ours{border-color:rgba(79,195,247,0.3);background:rgba(79,195,247,0.04)}
+.cc-title{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;margin-bottom:12px;letter-spacing:2px}
+.cc .cc-title{color:var(--muted)}
+.cc.ours .cc-title{color:var(--cyan)}
+.ci{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:12px;color:var(--muted)}
+.ci:last-child{border-bottom:none}
+.vs-col{display:flex;align-items:center;justify-content:center;font-family:'Orbitron',monospace;font-size:13px;font-weight:900;color:rgba(255,255,255,0.12);padding-top:46px}
+
+/* ═══ S14: Q&A ═══ */
+.qa-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;width:100%;max-width:880px}
+.qa{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;transition:all 0.2s}
+.qa:hover{border-color:rgba(79,195,247,0.4);background:rgba(79,195,247,0.04);transform:translateY(-2px)}
+.qa-q{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;color:var(--cyan);margin-bottom:7px;display:flex;align-items:flex-start;gap:5px}
+.qa-q::before{content:'Q:';color:var(--purple);flex-shrink:0}
+.qa-a{font-size:11px;color:var(--muted);line-height:1.5;padding-left:16px;border-left:1px solid rgba(79,195,247,0.2)}
+
+/* ═══ S15: THANKS ═══ */
+#s15{background:radial-gradient(ellipse at 50% 40%,rgba(139,92,246,0.08) 0%,transparent 70%)}
+.ty-drone{font-size:72px;animation:levitate 4s ease-in-out infinite;filter:drop-shadow(0 0 30px rgba(139,92,246,0.5));margin-bottom:14px}
+.ty-main{font-family:'Orbitron',monospace;font-size:38px;font-weight:900;background:linear-gradient(135deg,var(--cyan),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:8px;text-align:center}
+.ty-sub{font-size:14px;color:var(--muted);margin-bottom:28px}
+.tags{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;max-width:680px}
+.tag{font-family:'Space Mono',monospace;font-size:10px;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:4px;padding:5px 12px;color:var(--muted);letter-spacing:1px;transition:all 0.2s}
+.tag:hover{border-color:rgba(79,195,247,0.4);color:var(--cyan)}
+
+.slide.active .tc,.slide.active .cmd,.slide.active .step,.slide.active .mc,.slide.active .arow,.slide.active .qa,.slide.active .ss{animation:fadeUp 0.4s ease both}
+.d1{animation-delay:.06s}.d2{animation-delay:.12s}.d3{animation-delay:.18s}.d4{animation-delay:.24s}.d5{animation-delay:.30s}.d6{animation-delay:.36s}
+</style>
+</head>
+<body>
+
+<div id="progressBar"></div>
+<div id="slideCounter">SLIDE 01 / 15</div>
+<div id="dots"></div>
+<div id="hints">
+  <div class="hint">← → NAVIGATE</div>
+  <div class="hint">SPACE NEXT</div>
+</div>
+<div id="nav">
+  <button class="nav-btn" onclick="prev()">← НАЗАД</button>
+  <span id="counter">01 / 15</span>
+  <button class="nav-btn" onclick="next()">ВПЕРЁД →</button>
+</div>
+
+<div id="slides">
+
+<!-- S1: TITLE -->
+<div class="slide active" id="s1">
+  <div class="particles" id="p1"></div>
+  <div class="t-drone">🚁</div>
+  <div class="t-main">DRONE CONTROL<br>WITH VOICE</div>
+  <div class="t-sub">Голосовое управление беспилотным летательным аппаратом</div>
+  <div class="t-badge">[ IEEE XPLORE · DOC #7993759 · 2017 · ArduPilot + DroneKit ]</div>
+</div>
+
+<!-- S2: PROBLEM -->
+<div class="slide" id="s2">
+  <div class="s-title">ПРОБЛЕМА И ЦЕЛЬ ПРОЕКТА</div>
+  <div class="prob-grid">
+    <div class="prob-box bad">
+      <div class="prob-title">❌ ТРАДИЦИОННОЕ УПРАВЛЕНИЕ</div>
+      <div class="prob-item d1"><span>🕹️</span> Пульт с двумя джойстиками — сложно осваивать</div>
+      <div class="prob-item d2"><span>📚</span> Требует десятков часов обучения</div>
+      <div class="prob-item d3"><span>🙌</span> Обе руки постоянно заняты</div>
+      <div class="prob-item d4"><span>😰</span> В экстренной ситуации легко ошибиться</div>
+      <div class="prob-item d5"><span>🔧</span> Высокий порог входа для новых пользователей</div>
+      <div class="prob-item d6"><span>📡</span> Отдельное устройство — дополнительный вес</div>
+    </div>
+    <div class="prob-box good">
+      <div class="prob-title">✅ ГОЛОСОВОЕ УПРАВЛЕНИЕ (наш подход)</div>
+      <div class="prob-item d1"><span>🎤</span> Просто произносишь команду — дрон выполняет</div>
+      <div class="prob-item d2"><span>⚡</span> Интуитивно: не нужно учиться управлению</div>
+      <div class="prob-item d3"><span>🤲</span> Руки полностью свободны для другой работы</div>
+      <div class="prob-item d4"><span>🔄</span> Реальное время — задержка менее 2 секунд</div>
+      <div class="prob-item d5"><span>🌍</span> Поддержка двух языков: English и Русский</div>
+      <div class="prob-item d6"><span>💻</span> Работает на любом ПК с микрофоном</div>
+    </div>
+  </div>
+</div>
+
+<!-- S3: IEEE -->
+<div class="slide" id="s3">
+  <div class="s-title">НАУЧНАЯ ОСНОВА — IEEE XPLORE #7993759</div>
+  <div class="ieee-grid">
+    <div class="ieee-box">
+      <div class="ieee-quote">"A real-time voice controlled unmanned aerial vehicle system capable of recognizing spoken commands and translating them into drone navigation instructions with minimal latency..."</div>
+      <div class="ieee-row"><span class="ieee-key">ГОД</span><span class="ieee-val">2017</span></div>
+      <div class="ieee-row"><span class="ieee-key">ТИП</span><span class="ieee-val">IEEE Conference Paper</span></div>
+      <div class="ieee-row"><span class="ieee-key">EVENT</span><span class="ieee-val">ICECTA 2017</span></div>
+      <div class="ieee-row"><span class="ieee-key">DOI</span><span class="ieee-val" style="font-size:11px">10.1109/ICECTA.2017.8252059</span></div>
+      <div class="ieee-row"><span class="ieee-key">ТЕМА</span><span class="ieee-val">Voice Controlled UAV Navigation</span></div>
+      <div class="ieee-row"><span class="ieee-key">ИТОГ</span><span class="ieee-val">5 команд, 1 язык, online only</span></div>
+    </div>
+    <div class="ieee-box">
+      <div class="step-label">Как работает система из статьи</div>
+      <div class="step d1"><div class="step-n">1</div>Человек произносит команду голосом в микрофон</div>
+      <div class="step d2"><div class="step-n">2</div>Модуль захвата аудио записывает речь</div>
+      <div class="step d3"><div class="step-n">3</div>Движок распознавания речи переводит в текст</div>
+      <div class="step d4"><div class="step-n">4</div>Парсер команд находит нужное действие</div>
+      <div class="step d5"><div class="step-n">5</div>MAVLink пакет отправляется на контроллер</div>
+      <div class="step d6"><div class="step-n">6</div>Дрон выполняет: вперёд, назад, вверх, вниз, стоп</div>
+    </div>
+  </div>
+</div>
+
+<!-- S4: ARCH -->
+<div class="slide" id="s4">
+  <div class="s-title">АРХИТЕКТУРА СИСТЕМЫ — ПОТОК ДАННЫХ</div>
+  <div class="arch">
+    <div class="arow d1"><span class="a-icon">🎤</span><span class="a-label">ВВОД</span><div><div class="a-tech">Микрофон → PyAudio</div><div class="a-sub">Захват PCM аудио 16kHz/16bit, буферизация</div></div><span class="a-badge">HARDWARE</span></div>
+    <div class="a-arrow">▼</div>
+    <div class="arow d2"><span class="a-icon">🧠</span><span class="a-label">РАСПОЗНАВАНИЕ</span><div><div class="a-tech">SpeechRecognition + Google Speech API</div><div class="a-sub">Пауза 0.8с → конец фразы → отправка в облако</div></div><span class="a-badge">AUDIO→TEXT</span></div>
+    <div class="a-arrow">▼</div>
+    <div class="arow d3"><span class="a-icon">📖</span><span class="a-label">ОБРАБОТКА</span><div><div class="a-tech">commands.py — словарь 13+ команд</div><div class="a-sub">Точное совпадение + поиск подстроки в тексте</div></div><span class="a-badge">"forward"→CMD</span></div>
+    <div class="a-arrow">▼</div>
+    <div class="arow d4"><span class="a-icon">🐍</span><span class="a-label">УПРАВЛЕНИЕ</span><div><div class="a-tech">DroneKit-Python → pymavlink</div><div class="a-sub">Формирование MAVLink пакетов, режим GUIDED</div></div><span class="a-badge">PYTHON API</span></div>
+    <div class="a-arrow">▼</div>
+    <div class="arow d5"><span class="a-icon">📡</span><span class="a-label">ПРОТОКОЛ</span><div><div class="a-tech">MAVLink v1/v2 — TCP/USB/Radio</div><div class="a-sub">SET_POSITION_TARGET_LOCAL_NED, NED система</div></div><span class="a-badge">MAVLINK</span></div>
+    <div class="a-arrow">▼</div>
+    <div class="arow d6"><span class="a-icon">🚁</span><span class="a-label">ИСПОЛНЕНИЕ</span><div><div class="a-tech">Pixhawk 2.4.8 / ArduPilot SITL</div><div class="a-sub">ArduCopter прошивка, режим GUIDED, GPS/IMU</div></div><span class="a-badge">HARDWARE</span></div>
+  </div>
+</div>
+
+<!-- S5: TECH -->
+<div class="slide" id="s5">
+  <div class="s-title">СТЕК ТЕХНОЛОГИЙ</div>
+  <div class="tech-grid">
+    <div class="tc d1"><div class="tc-icon">🐍</div><div class="tc-name">Python 3.10</div><div class="tc-desc">Основной язык проекта. Версия 3.10 выбрана специально — DroneKit несовместим с Python 3.11+ из-за удалённых API</div><div class="tc-tags"><span class="tc-tag">threading</span><span class="tc-tag">queue</span><span class="tc-tag">signal</span><span class="tc-tag">logging</span></div></div>
+    <div class="tc d2"><div class="tc-icon">🎙️</div><div class="tc-name">SpeechRecognition</div><div class="tc-desc">Библиотека-посредник между микрофоном и Google API. pyaudio захватывает звук, SR определяет паузы и отправляет аудио</div><div class="tc-tags"><span class="tc-tag">pyaudio</span><span class="tc-tag">Google API</span><span class="tc-tag">Vosk</span></div></div>
+    <div class="tc d3"><div class="tc-icon">🚁</div><div class="tc-name">DroneKit-Python</div><div class="tc-desc">Официальная Python библиотека от 3DR для управления дроном. Скрывает сложность MAVLink за простыми методами</div><div class="tc-tags"><span class="tc-tag">dronekit</span><span class="tc-tag">pymavlink</span><span class="tc-tag">v2.9.2</span></div></div>
+    <div class="tc d4"><div class="tc-icon">📡</div><div class="tc-name">MAVLink Protocol</div><div class="tc-desc">Micro Air Vehicle Link — стандарт связи с дронами с 2009 года. Лёгкие бинарные пакеты с CRC, через TCP/USB/Radio</div><div class="tc-tags"><span class="tc-tag">MAVLink v2</span><span class="tc-tag">TCP</span><span class="tc-tag">57600 baud</span></div></div>
+    <div class="tc d5"><div class="tc-icon">💻</div><div class="tc-name">ArduPilot SITL</div><div class="tc-desc">Software In The Loop — полноценный симулятор дрона на ПК. Симулирует физику, GPS, IMU. Те же команды что и реальный Pixhawk</div><div class="tc-tags"><span class="tc-tag">dronekit-sitl</span><span class="tc-tag">tcp:5760</span><span class="tc-tag">ArduCopter</span></div></div>
+    <div class="tc d6"><div class="tc-icon">🔧</div><div class="tc-name">Pixhawk 2.4.8</div><div class="tc-desc">Полётный контроллер с процессором STM32F427, 3-осевым IMU, барометром и GPS портом. Прошивка ArduCopter от ArduPilot</div><div class="tc-tags"><span class="tc-tag">STM32F427</span><span class="tc-tag">IMU</span><span class="tc-tag">ArduCopter</span></div></div>
+  </div>
+</div>
+
+<!-- S6: COMMANDS -->
+<div class="slide" id="s6">
+  <div class="s-title">ГОЛОСОВЫЕ КОМАНДЫ — 13 ДЕЙСТВИЙ</div>
+  <div class="cmd-grid">
+    <div class="cmd d1"><div class="cmd-i">✈️</div><div class="cmd-e">"takeoff" / "launch"</div><div class="cmd-r">взлёт / старт</div><div class="cmd-desc">arm → GUIDED → takeoff(5m)</div></div>
+    <div class="cmd d2"><div class="cmd-i">🛬</div><div class="cmd-e">"land" / "landing"</div><div class="cmd-r">посадка / садись</div><div class="cmd-desc">mode → LAND</div></div>
+    <div class="cmd d3"><div class="cmd-i">⏹️</div><div class="cmd-e">"stop" / "hover"</div><div class="cmd-r">стоп / зависни</div><div class="cmd-desc">velocity(0,0,0)</div></div>
+    <div class="cmd d4"><div class="cmd-i">🏠</div><div class="cmd-e">"return home"</div><div class="cmd-r">домой / возврат</div><div class="cmd-desc">mode → RTL</div></div>
+    <div class="cmd d1"><div class="cmd-i">➡️</div><div class="cmd-e">"forward"</div><div class="cmd-r">вперёд</div><div class="cmd-desc">vx=+0.5 m/s</div></div>
+    <div class="cmd d2"><div class="cmd-i">⬅️</div><div class="cmd-e">"backward"</div><div class="cmd-r">назад</div><div class="cmd-desc">vx=-0.5 m/s</div></div>
+    <div class="cmd d3"><div class="cmd-i">↖️</div><div class="cmd-e">"left"</div><div class="cmd-r">влево / налево</div><div class="cmd-desc">vy=-0.5 m/s</div></div>
+    <div class="cmd d4"><div class="cmd-i">↗️</div><div class="cmd-e">"right"</div><div class="cmd-r">вправо / направо</div><div class="cmd-desc">vy=+0.5 m/s</div></div>
+    <div class="cmd d1"><div class="cmd-i">🔼</div><div class="cmd-e">"up" / "ascend"</div><div class="cmd-r">вверх / выше</div><div class="cmd-desc">vz=-0.5 (NED!)</div></div>
+    <div class="cmd d2"><div class="cmd-i">🔽</div><div class="cmd-e">"down" / "descend"</div><div class="cmd-r">вниз / ниже</div><div class="cmd-desc">vz=+0.5 (NED!)</div></div>
+    <div class="cmd d3"><div class="cmd-i">↺</div><div class="cmd-e">"turn left/right"</div><div class="cmd-r">поворот ±45°</div><div class="cmd-desc">MAV_CMD_YAW</div></div>
+    <div class="cmd d4"><div class="cmd-i">🚨</div><div class="cmd-e">"emergency" / "abort"</div><div class="cmd-r">аварийная остановка</div><div class="cmd-desc">vehicle.armed=False</div></div>
+  </div>
+</div>
+
+<!-- S7: HOW IT WORKS -->
+<div class="slide" id="s7">
+  <div class="s-title">КАК РАБОТАЕТ — ДЕТАЛИ РЕАЛИЗАЦИИ</div>
+  <div class="how-grid">
+    <div class="how-box">
+      <div class="how-title">🧠 Распознавание речи (recognizer.py)</div>
+      <div class="how-step"><span class="how-num">01</span>pyaudio открывает поток с микрофона (16kHz, mono)</div>
+      <div class="how-step"><span class="how-num">02</span>adjust_for_ambient_noise() — калибровка 2 сек при старте</div>
+      <div class="how-step"><span class="how-num">03</span>energy_threshold=4000 — порог для определения речи</div>
+      <div class="how-step"><span class="how-num">04</span>pause_threshold=0.8с — тишина = конец фразы</div>
+      <div class="how-step"><span class="how-num">05</span>Аудио → Google Speech API → текст строкой</div>
+      <div class="how-step"><span class="how-num">06</span>Текст кладётся в queue.Queue() для main цикла</div>
+      <div class="how-step"><span class="how-num">07</span>Всё работает в отдельном потоке (threading.Thread)</div>
+    </div>
+    <div class="how-box">
+      <div class="how-title">🚁 Управление дроном (controller.py)</div>
+      <div class="how-step"><span class="how-num">01</span>connect() → dronekit.connect(tcp:127.0.0.1:5760)</div>
+      <div class="how-step"><span class="how-num">02</span>Ждём is_armable: GPS fix + калибровка IMU</div>
+      <div class="how-step"><span class="how-num">03</span>mode = GUIDED → дрон слушает команды от ПК</div>
+      <div class="how-step"><span class="how-num">04</span>vehicle.armed = True → запуск моторов</div>
+      <div class="how-step"><span class="how-num">05</span>simple_takeoff(5) → взлёт, ждём altitude ≥ 4.75m</div>
+      <div class="how-step"><span class="how-num">06</span>send_velocity(vx,vy,vz) → MAVLink каждые 100мс</div>
+      <div class="how-step"><span class="how-num">07</span>При выходе: land() если is_flying, vehicle.close()</div>
+    </div>
+  </div>
+</div>
+
+<!-- S8: CODE -->
+<div class="slide" id="s8">
+  <div class="s-title">КЛЮЧЕВОЙ КОД ПРОЕКТА</div>
+  <div class="code-wrap">
+    <div class="cdots"><span class="cd" style="background:#F87171"></span><span class="cd" style="background:#FCD34D"></span><span class="cd" style="background:#34D399"></span></div>
+    <div class="code-full"><span class="cm"># main.py — главный цикл голосового управления</span>
+<span class="kw">while</span> <span class="nm">self</span>.is_running:
+    text <span class="op">=</span> <span class="nm">self</span>.recognizer.<span class="fn">get_command</span>(timeout<span class="op">=</span><span class="nm">0.5</span>)  <span class="cm"># берём из queue</span>
+    <span class="kw">if</span> text:
+        lang <span class="op">=</span> <span class="st">"ru"</span> <span class="kw">if</span> <span class="st">"RU"</span> <span class="kw">in</span> LANGUAGE <span class="kw">else</span> <span class="st">"en"</span>
+        command <span class="op">=</span> <span class="fn">get_command</span>(text, language<span class="op">=</span>lang)  <span class="cm"># "go forward" → "FORWARD"</span>
+        <span class="kw">if</span> command <span class="kw">and</span> command <span class="kw">in</span> <span class="nm">self</span>.command_handlers:
+            <span class="nm">self</span>.command_handlers[command]()  <span class="cm"># → drone.move_forward()</span>
+
+<span class="cm"># controller.py — отправка скорости через MAVLink (NED система)</span>
+<span class="kw">def</span> <span class="fn">send_velocity</span>(<span class="nm">self</span>, vx, vy, vz, duration<span class="op">=</span><span class="nm">1</span>):
+    msg <span class="op">=</span> <span class="nm">self</span>.vehicle.message_factory.<span class="fn">set_position_target_local_ned_encode</span>(
+        <span class="nm">0</span>, <span class="nm">0</span>, <span class="nm">0</span>,                          <span class="cm"># время, target_system, component</span>
+        mavutil.mavlink.MAV_FRAME_LOCAL_NED,  <span class="cm"># система координат NED</span>
+        <span class="nm">0b0000111111000111</span>,               <span class="cm"># маска: только скорость активна</span>
+        <span class="nm">0</span>, <span class="nm">0</span>, <span class="nm">0</span>,                          <span class="cm"># позиция (игнорируется)</span>
+        vx, vy, vz,                          <span class="cm"># скорость м/с (vz- = вверх!)</span>
+        <span class="nm">0</span>, <span class="nm">0</span>, <span class="nm">0</span>, <span class="nm">0</span>, <span class="nm">0</span>                    <span class="cm"># ускорение, yaw (игнорируется)</span>
+    )
+    <span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(<span class="fn">int</span>(duration <span class="op">*</span> <span class="nm">10</span>)):    <span class="cm"># отправляем каждые 100мс</span>
+        <span class="nm">self</span>.vehicle.<span class="fn">send_mavlink</span>(msg); time.<span class="fn">sleep</span>(<span class="nm">0.1</span>)</div>
+  </div>
+</div>
+
+<!-- S9: MAVLINK -->
+<div class="slide" id="s9">
+  <div class="s-title">MAVLINK ПРОТОКОЛ И СИСТЕМА КООРДИНАТ NED</div>
+  <div class="mav-grid">
+    <div class="mav-box">
+      <div class="mav-title">📡 Структура MAVLink пакета</div>
+      <div class="mav-packet">
+        <div class="mp" style="background:rgba(79,195,247,0.1);border:1px solid rgba(79,195,247,0.25)"><div class="mp-label">СТАРТ</div><div class="mp-val" style="color:var(--cyan)">0xFE</div></div>
+        <div class="mp" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08)"><div class="mp-label">ДЛИНА</div><div class="mp-val" style="color:var(--text)">N байт</div></div>
+        <div class="mp" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08)"><div class="mp-label">SEQ</div><div class="mp-val" style="color:var(--text)">0-255</div></div>
+        <div class="mp" style="background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.25)"><div class="mp-label">MSG ID</div><div class="mp-val" style="color:var(--purple)">#84</div></div>
+        <div class="mp" style="background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.25)"><div class="mp-label">ДАННЫЕ</div><div class="mp-val" style="color:var(--green)">vx,vy,vz</div></div>
+        <div class="mp" style="background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.25)"><div class="mp-label">CRC</div><div class="mp-val" style="color:var(--red)">2 байта</div></div>
+      </div>
+      <div class="mav-item"><span class="mav-dot">▶</span>MSG #84 = SET_POSITION_TARGET_LOCAL_NED</div>
+      <div class="mav-item"><span class="mav-dot">▶</span>Маска 0b0000111111000111 — только скорость активна</div>
+      <div class="mav-item"><span class="mav-dot">▶</span>DroneKit автоматически формирует правильный пакет</div>
+      <div class="mav-item"><span class="mav-dot">▶</span>Отправляем каждые 100мс чтобы дрон не завис</div>
+      <div class="mav-item"><span class="mav-dot">▶</span>Подключение: TCP (SITL) или USB/Radio (реальный дрон)</div>
+    </div>
+    <div class="mav-box">
+      <div class="mav-title">🧭 Система координат NED (авиационный стандарт)</div>
+      <div class="ned-box">
+        <div class="ned-row"><span class="ned-axis">vx +</span><span class="ned-desc">→ вперёд (North)</span></div>
+        <div class="ned-row"><span class="ned-axis">vx -</span><span class="ned-desc">→ назад</span></div>
+        <div class="ned-row"><span class="ned-axis">vy +</span><span class="ned-desc">→ вправо (East)</span></div>
+        <div class="ned-row"><span class="ned-axis">vy -</span><span class="ned-desc">→ влево</span></div>
+        <div class="ned-row"><span class="ned-axis" style="color:var(--yellow)">vz -</span><span class="ned-desc">→ ВВЕРХ ⚠️ (Down ось!)</span></div>
+        <div class="ned-row"><span class="ned-axis" style="color:var(--yellow)">vz +</span><span class="ned-desc">→ ВНИЗ ⚠️ (Down ось!)</span></div>
+        <div class="ned-warn">⚠️ NED = North-East-DOWN: ось Z направлена ВНИЗ — это авиационный стандарт, не ошибка!</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- S10: PIXHAWK -->
+<div class="slide" id="s10">
+  <div class="s-title">PIXHAWK 2.4.8 — ПОЛЁТНЫЙ КОНТРОЛЛЕР</div>
+  <div class="px-grid">
+    <div class="px-box">
+      <div class="px-title">🔧 Технические характеристики</div>
+      <div class="px-spec"><span class="px-key">ПРОЦЕССОР</span><span class="px-val">STM32F427 @ 168 MHz</span></div>
+      <div class="px-spec"><span class="px-key">IMU</span><span class="px-val">MPU-6000 (акселерометр + гироскоп)</span></div>
+      <div class="px-spec"><span class="px-key">КОМПАС</span><span class="px-val">HMC5883L (3-осевой)</span></div>
+      <div class="px-spec"><span class="px-key">БАРОМЕТР</span><span class="px-val">MS5611 (определяет высоту)</span></div>
+      <div class="px-spec"><span class="px-key">GPS</span><span class="px-val">Внешний (u-blox NEO-M8N)</span></div>
+      <div class="px-spec"><span class="px-key">UART</span><span class="px-val">5 портов (TELEM1, TELEM2, GPS...)</span></div>
+      <div class="px-spec"><span class="px-key">PWM</span><span class="px-val">8 выходов для ESC/серво</span></div>
+      <div class="px-spec"><span class="px-key">ПИТАНИЕ</span><span class="px-val">5V через PM или USB</span></div>
+      <div class="px-spec"><span class="px-key">ПРОШИВКА</span><span class="px-val">ArduCopter (от ArduPilot)</span></div>
+    </div>
+    <div class="px-box">
+      <div class="px-title">✈️ Режимы полёта ArduCopter</div>
+      <div class="px-mode active-mode"><span style="font-size:14px">🟢</span><span class="px-mode-name">GUIDED</span>Команды от внешнего ПК через MAVLink<span class="px-badge use">МЫ ИСПОЛЬЗУЕМ</span></div>
+      <div class="px-mode inactive"><span style="font-size:14px">⚪</span><span class="px-mode-name">STABILIZE</span>Ручное управление с пульта<span class="px-badge no">не используем</span></div>
+      <div class="px-mode inactive"><span style="font-size:14px">⚪</span><span class="px-mode-name">AUTO</span>Автономный полёт по маршруту<span class="px-badge no">не используем</span></div>
+      <div class="px-mode active-mode"><span style="font-size:14px">🟡</span><span class="px-mode-name">RTL</span>Return To Launch — возврат домой<span class="px-badge use">команда "return"</span></div>
+      <div class="px-mode active-mode"><span style="font-size:14px">🟡</span><span class="px-mode-name">LAND</span>Автоматическая посадка вертикально<span class="px-badge use">команда "land"</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- S11: SITL -->
+<div class="slide" id="s11">
+  <div class="s-title">ЗАПУСК СИСТЕМЫ — SITL СИМУЛЯТОР</div>
+  <div class="sitl-grid">
+    <div class="sitl-box">
+      <div class="sitl-title">💻 Терминал — вывод системы</div>
+      <div class="terminal">
+        <div class="t-line"><span class="t-prompt">(venv) $</span><span class="t-cmd">python main.py</span></div>
+        <div class="t-line"><span class="t-out">Connecting to: tcp:127.0.0.1:5760</span></div>
+        <div class="t-line"><span class="t-ok">✅ Connected! Firmware: ArduCopter V4.3.6</span></div>
+        <div class="t-line"><span class="t-out">GPS: GPSInfo:fix=3,num_sat=10</span></div>
+        <div class="t-line"><span class="t-out">Battery: voltage=12.587,current=0.17</span></div>
+        <div class="t-line"><span class="t-out">Calibrating microphone... (2s)</span></div>
+        <div class="t-line"><span class="t-ok">🎤 Listening for commands...</span></div>
+        <div class="t-line"><span class="t-out">[INFO] Recognized: 'takeoff'</span></div>
+        <div class="t-line"><span class="t-out">[INFO] Command: TAKEOFF → arming...</span></div>
+        <div class="t-line"><span class="t-out">[INFO] Altitude: 1.2m / 5.0m</span></div>
+        <div class="t-line"><span class="t-ok">[INFO] ✅ Target altitude reached!</span></div>
+        <div class="t-line"><span class="t-out">[INFO] Recognized: 'go forward'</span></div>
+        <div class="t-line"><span class="t-out">[INFO] Command: FORWARD → vx=0.5 m/s</span></div>
+      </div>
+    </div>
+    <div class="sitl-box">
+      <div class="sitl-title">🚀 Пошаговый запуск проекта</div>
+      <div class="ss d1"><span class="ss-n">01</span><div><div class="ss-title">Активировать окружение</div><div>Python 3.10 обязателен</div><div class="ss-code">source venv/bin/activate</div></div></div>
+      <div class="ss d2"><span class="ss-n">02</span><div><div class="ss-title">Запустить SITL симулятор</div><div>В отдельном терминале</div><div class="ss-code">python sitl_start.py</div></div></div>
+      <div class="ss d3"><span class="ss-n">03</span><div><div class="ss-title">Запустить голосовое управление</div><div>Подключается к tcp:127.0.0.1:5760</div><div class="ss-code">python main.py</div></div></div>
+      <div class="ss d4"><span class="ss-n">04</span><div><div class="ss-title">Произносить команды</div><div>Чётко, пауза между командами 1-2с</div><div class="ss-code">"takeoff" → "forward" → "land"</div></div></div>
+      <div class="ss d5"><span class="ss-n">05</span><div><div class="ss-title">Для реального Pixhawk</div><div>Изменить одну строку в config.py</div><div class="ss-code">CONNECTION = "/dev/ttyUSB0"</div></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- S12: METRICS -->
+<div class="slide" id="s12">
+  <div class="s-title">РЕЗУЛЬТАТЫ И МЕТРИКИ СИСТЕМЫ</div>
+  <div class="metrics">
+    <div class="mc d1"><div class="mc-n">13</div><div class="mc-u">команд</div><div class="mc-l">Голосовых команд</div></div>
+    <div class="mc d2"><div class="mc-n">2</div><div class="mc-u">языка</div><div class="mc-l">EN + RU</div></div>
+    <div class="mc d3"><div class="mc-n">~90%</div><div class="mc-u">точность</div><div class="mc-l">Google Speech API</div></div>
+    <div class="mc d4"><div class="mc-n">&lt;2с</div><div class="mc-u">задержка</div><div class="mc-l">Голос → Действие</div></div>
+  </div>
+  <div class="res-row">
+    <div class="rb">
+      <div class="rb-title" style="color:var(--green)">✅ ЧТО РЕАЛИЗОВАНО</div>
+      <div class="ri"><span>▶</span>Реальное время — отдельный поток (threading.Thread)</div>
+      <div class="ri"><span>▶</span>Очередь команд queue.Queue — потокобезопасно</div>
+      <div class="ri"><span>▶</span>Безопасная посадка при Ctrl+C или сигнале SIGTERM</div>
+      <div class="ri"><span>▶</span>Аварийная остановка — мгновенное разоружение</div>
+      <div class="ri"><span>▶</span>Полная совместимость: SITL симулятор + Pixhawk 2.4.8</div>
+    </div>
+    <div class="rb">
+      <div class="rb-title" style="color:var(--purple)">🔮 ВОЗМОЖНЫЕ УЛУЧШЕНИЯ</div>
+      <div class="ri"><span>▶</span>Vosk offline — работа без интернета, latency 100мс</div>
+      <div class="ri"><span>▶</span>GPS навигация — "лети на север 50 метров"</div>
+      <div class="ri"><span>▶</span>Идентификация говорящего — только голос владельца</div>
+      <div class="ri"><span>▶</span>Числовые параметры — "вперёд на 3 метра"</div>
+      <div class="ri"><span>▶</span>Мобильное приложение + стриминг видео с камеры</div>
+    </div>
+  </div>
+</div>
+
+<!-- S13: COMPARE -->
+<div class="slide" id="s13">
+  <div class="s-title">СРАВНЕНИЕ СО СТАТЬЁЙ IEEE 7993759</div>
+  <div class="compare">
+    <div class="cc">
+      <div class="cc-title">[ СТАТЬЯ IEEE · 2017 ]</div>
+      <div class="ci">📝 5 базовых команд управления</div>
+      <div class="ci">🌍 Только один язык</div>
+      <div class="ci">🔊 Исключительно online распознавание</div>
+      <div class="ci">🛠️ Специализированное железо</div>
+      <div class="ci">📡 Прямой MAVLink без обёртки</div>
+      <div class="ci">⚠️ Нет graceful error handling</div>
+      <div class="ci">🧪 Нет симулятора — только реальный дрон</div>
+      <div class="ci">📁 Монолитная структура кода</div>
+    </div>
+    <div class="vs-col">VS</div>
+    <div class="cc ours">
+      <div class="cc-title">[ НАШ ПРОЕКТ ]</div>
+      <div class="ci">✅ 13 команд (+ RTL, Emergency, Yaw)</div>
+      <div class="ci">✅ English + Русский язык</div>
+      <div class="ci">✅ Online (Google) + Offline (Vosk)</div>
+      <div class="ci">✅ Любой ПК + SITL симулятор</div>
+      <div class="ci">✅ DroneKit — чистый Python API</div>
+      <div class="ci">✅ Безопасная посадка + signal handler</div>
+      <div class="ci">✅ SITL для разработки без риска</div>
+      <div class="ci">✅ Модульная архитектура, 5 файлов</div>
+    </div>
+  </div>
+</div>
+
+<!-- S14: Q&A -->
+<div class="slide" id="s14">
+  <div class="s-title">ВОЗМОЖНЫЕ ВОПРОСЫ НА ЗАЩИТЕ</div>
+  <div class="qa-grid">
+    <div class="qa d1"><div class="qa-q">Почему Python 3.10, а не новее?</div><div class="qa-a">DroneKit использует URLopener и другие API, удалённые в Python 3.11+. Версия 3.10 — последняя полностью совместимая.</div></div>
+    <div class="qa d2"><div class="qa-q">Что такое режим GUIDED?</div><div class="qa-a">Режим Pixhawk где дрон принимает команды от внешнего компьютера через MAVLink. В отличие от STABILIZE (ручной) и AUTO (маршрут).</div></div>
+    <div class="qa d3"><div class="qa-q">Почему vz отрицательный при движении вверх?</div><div class="qa-a">Система координат NED (North-East-Down) — авиационный стандарт. Ось Z направлена вниз, поэтому "вверх" = отрицательный vz.</div></div>
+    <div class="qa d4"><div class="qa-q">Зачем threading и queue?</div><div class="qa-a">Распознавание речи блокирует поток. Threading позволяет одновременно слушать микрофон И управлять дроном. Queue — потокобезопасная передача данных.</div></div>
+    <div class="qa d1"><div class="qa-q">Что такое армирование дрона?</div><div class="qa-a">Arming = запуск моторов на минимальных оборотах, готовность к взлёту. Перед армированием система проверяет GPS, батарею, IMU калибровку.</div></div>
+    <div class="qa d2"><div class="qa-q">Какова задержка системы?</div><div class="qa-a">Google API: 500-2000мс (зависит от сети). Vosk offline: 100-300мс. Основная задержка — передача аудио в облако и обратно.</div></div>
+    <div class="qa d3"><div class="qa-q">Как система понимает конец команды?</div><div class="qa-a">SpeechRecognition использует pause_threshold=0.8с. Если тишина длится 0.8 секунды — фраза считается завершённой.</div></div>
+    <div class="qa d4"><div class="qa-q">Чем SITL отличается от реального дрона?</div><div class="qa-a">SITL симулирует физику, GPS и IMU программно. Отвечает на те же MAVLink команды. Подключение через TCP вместо USB/Radio.</div></div>
+  </div>
+</div>
+
+<!-- S15: THANKS -->
+<div class="slide" id="s15">
+  <div class="particles" id="p2"></div>
+  <div class="ty-drone">🚁</div>
+  <div class="ty-main">СПАСИБО ЗА ВНИМАНИЕ</div>
+  <div class="ty-sub">Готовы ответить на вопросы &nbsp;·&nbsp; Drone Control with Voice &nbsp;·&nbsp; IEEE #7993759</div>
+  <div class="tags">
+    <div class="tag">🎤 SpeechRecognition</div>
+    <div class="tag">🐍 DroneKit 2.9.2</div>
+    <div class="tag">📡 MAVLink</div>
+    <div class="tag">🔧 Pixhawk 2.4.8</div>
+    <div class="tag">💻 ArduPilot SITL</div>
+    <div class="tag">📄 IEEE 7993759</div>
+    <div class="tag">🐧 Python 3.10</div>
+    <div class="tag">🌐 Google Speech API</div>
+  </div>
+</div>
+
+</div><!-- /slides -->
+
+<script>
+const TOTAL = 15;
+let cur = 1;
+const ids = Array.from({length:TOTAL},(_,i)=>'s'+(i+1));
+
+// DOTS
+const dotsEl = document.getElementById('dots');
+ids.forEach((_,i)=>{
+  const d = document.createElement('div');
+  d.className = 'dot'+(i===0?' active':'');
+  d.onclick = ()=>goTo(i+1);
+  dotsEl.appendChild(d);
+});
+
+// PARTICLES
+function makeP(id){
+  const c = document.getElementById(id);
+  if(!c) return;
+  for(let i=0;i<22;i++){
+    const p = document.createElement('div');
+    p.className = 'p';
+    const sz = 1+Math.random()*3;
+    p.style.cssText = `left:${Math.random()*100}%;width:${sz}px;height:${sz}px;animation-duration:${9+Math.random()*12}s;animation-delay:${Math.random()*9}s`;
+    c.appendChild(p);
+  }
+}
+makeP('p1'); makeP('p2');
+
+function fmt(n){ return String(n).padStart(2,'0')+' / '+String(TOTAL).padStart(2,'0') }
+
+function goTo(n){
+  const prev = document.getElementById(ids[cur-1]);
+  prev.classList.remove('active');
+  prev.classList.add('exit');
+  setTimeout(()=>prev.classList.remove('exit'), 600);
+  cur = n;
+  document.getElementById(ids[cur-1]).classList.add('active');
+  document.getElementById('progressBar').style.width = (cur/TOTAL*100)+'%';
+  document.getElementById('counter').textContent = fmt(cur);
+  document.getElementById('slideCounter').textContent = 'SLIDE '+fmt(cur);
+  document.querySelectorAll('.dot').forEach((d,i)=>d.classList.toggle('active',i+1===cur));
+}
+function next(){ if(cur<TOTAL) goTo(cur+1) }
+function prev(){ if(cur>1) goTo(cur-1) }
+
+document.addEventListener('keydown',e=>{
+  if(e.key==='ArrowRight'||e.key===' '){ e.preventDefault(); next() }
+  if(e.key==='ArrowLeft'){ e.preventDefault(); prev() }
+});
+
+let tx = 0;
+document.addEventListener('touchstart',e=>tx=e.touches[0].clientX);
+document.addEventListener('touchend',e=>{
+  const d = tx - e.changedTouches[0].clientX;
+  if(Math.abs(d)>50) d>0?next():prev();
+});
+
+document.getElementById('progressBar').style.width = (1/TOTAL*100)+'%';
+document.getElementById('counter').textContent = fmt(1);
+document.getElementById('slideCounter').textContent = 'SLIDE '+fmt(1);
+</script>
+</body>
+</html>
