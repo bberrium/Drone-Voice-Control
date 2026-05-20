@@ -9,8 +9,8 @@ logger = logging.getLogger(__name__)
 
 class VoiceRecognizer:
     """
-    Класс для непрерывного распознавания голосовых команд.
-    Поддерживает Google Speech API и Vosk (offline).
+    Class for continuous voice command recognition.
+    Supports Google Speech API and Vosk (offline).
     """
 
     def __init__(self, language="en-US", use_offline=False):
@@ -22,41 +22,41 @@ class VoiceRecognizer:
         self.is_listening = False
         self._thread = None
 
-        # Настройка чувствительности микрофона
+        # Microphone sensitivity setup
         self.recognizer.energy_threshold = 4000
         self.recognizer.dynamic_energy_threshold = True
         self.recognizer.pause_threshold = 0.8
 
-        # Калибровка микрофона
+        # Microphone calibration
         self._calibrate()
 
         if use_offline:
             self._init_vosk()
 
     def _calibrate(self):
-        """Калибровка микрофона под уровень шума."""
-        logger.info("Калибровка микрофона...")
+        """Calibrating microphone to ambient noise level."""
+        logger.info("Calibrating microphone...")
         with self.microphone as source:
             self.recognizer.adjust_for_ambient_noise(source, duration=2)
-        logger.info(f"Калибровка завершена. "
+        logger.info(f"Calibration completed. "
                    f"Energy threshold: {self.recognizer.energy_threshold}")
 
     def _init_vosk(self):
-        """Инициализация Vosk для offline распознавания."""
+        """Initializing Vosk for offline recognition."""
         try:
             from vosk import Model, KaldiRecognizer
             import json
 
-            model_path = "vosk-model-small-en-us"  # Скачать модель заранее
+            model_path = "vosk-model-small-en-us"  # Download model in advance
             self.vosk_model = Model(model_path)
             self.vosk_recognizer = KaldiRecognizer(self.vosk_model, 16000)
-            logger.info("Vosk модель загружена успешно")
+            logger.info("Vosk model loaded successfully")
         except Exception as e:
-            logger.error(f"Ошибка загрузки Vosk: {e}")
+            logger.error(f"Error loading Vosk: {e}")
             self.use_offline = False
 
     def recognize_google(self, audio):
-        """Распознавание через Google Speech API."""
+        """Recognition via Google Speech API."""
         try:
             text = self.recognizer.recognize_google(
                 audio,
@@ -66,11 +66,11 @@ class VoiceRecognizer:
         except sr.UnknownValueError:
             return None
         except sr.RequestError as e:
-            logger.error(f"Ошибка Google API: {e}")
+            logger.error(f"Google API Error: {e}")
             return None
 
     def recognize_vosk(self, audio):
-        """Offline распознавание через Vosk."""
+        """Offline recognition via Vosk."""
         try:
             import json
             raw_data = audio.get_raw_data(
@@ -81,65 +81,64 @@ class VoiceRecognizer:
                 result = json.loads(self.vosk_recognizer.Result())
                 return result.get("text", "").lower()
         except Exception as e:
-            logger.error(f"Ошибка Vosk: {e}")
+            logger.error(f"Vosk Error: {e}")
         return None
 
     def _listen_loop(self):
-        """Основной цикл прослушивания в отдельном потоке."""
-        logger.info("🎤 Начало прослушивания команд...")
+        """Main listening loop in a separate thread."""
+        logger.info(" Starting to listen for commands...")
 
         with self.microphone as source:
             while self.is_listening:
                 try:
-                    logger.info("Слушаю...")
+                    logger.info("Listening...")
                     audio = self.recognizer.listen(
                         source,
                         timeout=5,
                         phrase_time_limit=4
                     )
 
-                    # Выбор метода распознавания
+                    # Choosing recognition method
                     if self.use_offline:
                         text = self.recognize_vosk(audio)
                     else:
                         text = self.recognize_google(audio)
 
                     if text:
-                        logger.info(f"Распознано: '{text}'")
+                        logger.info(f"Recognized: '{text}'")
                         self.command_queue.put(text)
 
                 except sr.WaitTimeoutError:
-                    # Тайм-аут — продолжаем слушать
+                    # Timeout - continue listening
                     continue
                 except Exception as e:
-                    logger.error(f"Ошибка в цикле прослушивания: {e}")
+                    logger.error(f"Error in listening loop: {e}")
 
     def start(self):
-        """Запуск прослушивания в фоновом потоке."""
+        """Start listening in a background thread."""
         self.is_listening = True
         self._thread = threading.Thread(
             target=self._listen_loop,
             daemon=True
         )
         self._thread.start()
-        logger.info("Распознавание речи запущено")
+        logger.info("Speech recognition started")
 
     def stop(self):
-        """Остановка прослушивания."""
+        """Stop listening."""
         self.is_listening = False
         if self._thread:
             self._thread.join(timeout=3)
-        logger.info("Распознавание речи остановлено")
+        logger.info("Speech recognition stopped")
 
     def get_command(self, timeout=0.1):
         """
-        Получение команды из очереди.
+        Getting command from queue.
         
         Returns:
-            строка с распознанным текстом или None
+            string with recognized text or None
         """
         try:
             return self.command_queue.get(timeout=timeout)
         except queue.Empty:
             return None
-

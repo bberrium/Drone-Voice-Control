@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Drone Control with Voice — главный модуль.
-Реализация на основе статьи IEEE 7993759.
+Drone Control with Voice — main module.
+Implementation based on IEEE 7993759 article.
 """
 
 import time
@@ -14,7 +14,7 @@ from voice_recognition.recognizer import VoiceRecognizer
 from voice_recognition.commands import get_command
 from drone_control.controller import DroneController
 
-# Настройка логирования
+# Logging setup
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 class VoiceDroneSystem:
     """
-    Главная система голосового управления дроном.
+    Main voice drone control system.
     """
 
     def __init__(self):
@@ -37,7 +37,7 @@ class VoiceDroneSystem:
         self.is_running = False
         self.is_flying = False
 
-        # Маппинг команд на функции
+        # Mapping commands to functions
         self.command_handlers = {
             "TAKEOFF":        self._handle_takeoff,
             "LAND":           self._handle_land,
@@ -54,21 +54,21 @@ class VoiceDroneSystem:
             "EMERGENCY_STOP": self._handle_emergency,
         }
 
-    # ─── Обработчики команд ─────────────────────────────────────
+    # ─── Command Handlers ───────────────────────────────────────
 
     def _handle_takeoff(self):
         if not self.is_flying:
             self.drone.arm_and_takeoff(DEFAULT_ALTITUDE)
             self.is_flying = True
         else:
-            logger.warning("Дрон уже в воздухе!")
+            logger.warning("Drone is already in the air!")
 
     def _handle_land(self):
         if self.is_flying:
             self.drone.land()
             self.is_flying = False
         else:
-            logger.warning("Дрон уже на земле!")
+            logger.warning("Drone is already on the ground!")
 
     def _handle_stop(self):
         if self.is_flying:
@@ -115,54 +115,54 @@ class VoiceDroneSystem:
         self.drone.emergency_stop()
         self.is_flying = False
 
-    # ─── Главный цикл ───────────────────────────────────────────
+    # ─── Main Loop ──────────────────────────────────────────────
 
     def process_voice_command(self, recognized_text):
-        """Обработка распознанного текста."""
-        logger.info(f"Обработка: '{recognized_text}'")
+        """Processing recognized text."""
+        logger.info(f"Processing: '{recognized_text}'")
 
-        # Определяем язык по настройкам
+        # Determine language based on settings
         lang = "ru" if "RU" in LANGUAGE.upper() else "en"
         command = get_command(recognized_text, language=lang)
 
         if command:
-            logger.info(f"✅ Команда: {command}")
+            logger.info(f" Command: {command}")
             handler = self.command_handlers.get(command)
             if handler:
                 try:
                     handler()
                 except Exception as e:
-                    logger.error(f"Ошибка выполнения команды {command}: {e}")
+                    logger.error(f"Error executing command {command}: {e}")
         else:
-            logger.info(f"❓ Команда не распознана: '{recognized_text}'")
+            logger.info(f" Command not recognized: '{recognized_text}'")
 
     def run(self):
-        """Основной цикл работы системы."""
+        """Main system execution loop."""
         logger.info("=" * 50)
-        logger.info("🚁 Система голосового управления дроном")
+        logger.info(" Voice drone control system")
         logger.info("=" * 50)
 
-        # Подключение к дрону
+        # Connecting to drone
         if not self.drone.connect():
-            logger.error("Не удалось подключиться к дрону. Выход.")
+            logger.error("Failed to connect to drone. Exiting.")
             return
 
-        # Запуск распознавания речи
+        # Start speech recognition
         self.recognizer.start()
         self.is_running = True
 
-        logger.info("🎤 Система готова! Произносите команды...")
-        print("\nДоступные команды:")
+        logger.info(" System ready! Speak commands...")
+        print("\nAvailable commands:")
         print("  takeoff/взлёт | land/посадка | stop/стоп")
         print("  forward/вперёд | backward/назад")
         print("  left/влево | right/вправо")
         print("  up/вверх | down/вниз")
         print("  return/домой | emergency/аварийная остановка")
-        print("\nНажмите Ctrl+C для выхода\n")
+        print("\nPress Ctrl+C to exit\n")
 
         try:
             while self.is_running:
-                # Получаем распознанный текст
+                # Get recognized text
                 recognized_text = self.recognizer.get_command(timeout=0.5)
 
                 if recognized_text:
@@ -171,29 +171,29 @@ class VoiceDroneSystem:
                 time.sleep(0.05)
 
         except KeyboardInterrupt:
-            logger.info("Получен сигнал прерывания")
+            logger.info("Interrupt signal received")
         finally:
             self.shutdown()
 
     def shutdown(self):
-        """Безопасное завершение работы."""
-        logger.info("Завершение работы системы...")
+        """Safe shutdown."""
+        logger.info("Shutting down system...")
         self.is_running = False
 
-        # Безопасная посадка если в воздухе
+        # Safe landing if in the air
         if self.is_flying:
-            logger.warning("Выполняется аварийная посадка...")
+            logger.warning("Executing emergency landing...")
             self.drone.land()
 
         self.recognizer.stop()
         self.drone.disconnect()
-        logger.info("Система остановлена")
+        logger.info("System stopped")
 
 
 def main():
     system = VoiceDroneSystem()
 
-    # Обработка системных сигналов
+    # System signal handling
     def signal_handler(sig, frame):
         system.shutdown()
         sys.exit(0)
@@ -206,4 +206,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
